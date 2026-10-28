@@ -18,12 +18,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -83,6 +86,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val formViewmodel: FormViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                FormViewModel()
+            }
+        }
+    }
+
+    private val postsViewModelPullToRefresh: PostsViewModelPullToRefresh by viewModels {
+        viewModelFactory {
+            initializer {
+                PostsViewModelPullToRefresh(postRepository)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -90,7 +109,79 @@ class MainActivity : ComponentActivity() {
             //SearchDebounce(postviewmodel)
             // Navigation(postsViewModelNav)
             // Timer(postsViewModelTimer)
-            AutoScrolling(postsViewModelNav)
+            //  AutoScrolling(postsViewModelNav)
+            //  ValidateForm(formViewmodel)
+            PullToRefresh(postsViewModelPullToRefresh)
+        }
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PullToRefresh(postsViewModelPullToRefresh: PostsViewModelPullToRefresh) {
+    val uistate by postsViewModelPullToRefresh.uistate.collectAsStateWithLifecycle()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+    ) {
+        when (val state = uistate) {
+            is PostUIStatePullToRefresh.Loading -> CircularProgressIndicator(
+                modifier = Modifier.align(
+                    Alignment.Center
+                )
+            )
+
+            is PostUIStatePullToRefresh.Success ->
+                PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = {postsViewModelPullToRefresh.refersh()}) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(state.posts) { post ->
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(text = "post title ${post.title}")
+                            }
+                        }
+                    }
+                }
+
+                    is PostUIStatePullToRefresh.Error -> Text(
+                "error ${state.message}",
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+    }
+}
+
+@Composable
+fun ValidateForm(formViewModel: FormViewModel) {
+    val uistate by formViewModel.uistate.collectAsStateWithLifecycle()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text("user registration")
+        TextField(
+            value = uistate.email,
+            onValueChange = { formViewModel.onEmailChanged(it) },
+            label = { Text("enter email") },
+            isError = uistate.emailError != null
+        )
+        uistate.emailError?.let { emailerror ->
+            Text(text = emailerror, color = Color.Red)
+        }
+
+        TextField(
+            value = uistate.password,
+            onValueChange = { formViewModel.onPasswordUpdated(it) },
+            label = { Text("enter password") },
+            isError = uistate.passworderror != null
+        )
+        uistate.passworderror?.let { passworderror ->
+            Text(text = passworderror, color = Color.Red)
+        }
+
+        Button(onClick = { formViewModel.submitForm() }) {
+            Text("submit form")
+        }
+        if (uistate.isSubmitted) {
+            Text("form submitted successfully")
         }
     }
 }
@@ -114,8 +205,17 @@ fun AutoScrolling(postsViewModelNav: PostsViewModelNav) {
 
     Box(modifier = Modifier.fillMaxSize()) {
         when (val state = uistate) {
-            is PostUIStateNav.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            is PostUIStateNav.Error -> Text(text = "${state.message}", modifier = Modifier.align(Alignment.Center))
+            is PostUIStateNav.Loading -> CircularProgressIndicator(
+                modifier = Modifier.align(
+                    Alignment.Center
+                )
+            )
+
+            is PostUIStateNav.Error -> Text(
+                text = "${state.message}",
+                modifier = Modifier.align(Alignment.Center)
+            )
+
             is PostUIStateNav.Success ->
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -177,9 +277,11 @@ fun DisplayEachRow(post: PostItemTimer) {
             remainingMs = post.timeStamp - System.currentTimeMillis()
         }
     }
-    Column(modifier = Modifier
-        .fillMaxWidth()
-        .padding(16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
         Text("post title: ${post.title}")
         Text("post id: ${post.id}")
         val secondsLeft = (remainingMs / 1000).coerceAtLeast(0)
